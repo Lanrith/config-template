@@ -1,0 +1,23 @@
+name: Build router
+on:
+  push:
+    branches: [main]
+    paths:
+      - config.yaml
+      - platform.lock
+      - extensions.lock
+      - extensions/**
+      - trust/**
+      - .github/workflows/build.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  image:
+    if: github.repository != 'Lanrith/config-template'
+    permissions:
+      contents: write
+      actions: read
+    uses: Lanrith/lanrith/.github/workflows/consumer.yml@b37e148d44d1fc0a35d1dc9d36b116882e7a58f5
+    with:
+      publish: true

@@ -1,0 +1,10 @@
+*.key
+*.pem
+*.p12
+*.pfx
+*.hash
+secrets/
+work/
+output/
+platform/
+__pycache__/
