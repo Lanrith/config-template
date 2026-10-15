@@ -18,6 +18,6 @@ jobs:
     permissions:
       contents: write
       actions: read
-    uses: Lanrith/lanrith/.github/workflows/consumer.yml@238fc9a46f6d073c3a9853a3b3e96e7aac924956
+    uses: Lanrith/lanrith/.github/workflows/consumer.yml@a4f3a18efa8d24e625c049a1762182e0d7ea40bd
     with:
       publish: true

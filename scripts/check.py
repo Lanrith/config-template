@@ -25,6 +25,9 @@ release.require(release.public_key(owner/'trust/boot.crt') != release.public_key
 release.require(value['hostname'] != 'example-router' and
                 not any('RXhhbXBsZU9ubHlOb3RB' in key for key in value['administration']['authorized_keys']),
                 'Replace the synthetic template identity and administrator key.')
+release.require(value['hardware'].get('machine_id') not in (None,
+                '0123456789abcdef0123456789abcdef', 'fedcba9876543210fedcba9876543210'),
+                'Run scripts/initialize.py once to select the permanent device identity.')
 if value['extensions']:
     pins = json.loads(release.read(owner/'extensions.lock', 65536), object_pairs_hook=release.unique)
     release.require(set(pins) == set(value['extensions']), 'Extension lock differs from configuration.')

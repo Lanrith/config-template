@@ -14,6 +14,10 @@ prerelease do not establish production readiness.
 1. Create a private repository from this template with `main` as its default
    branch. Replace the synthetic selectors, addresses and administrator key in
    `config.yaml`. Enable only the services you need.
+   Run `python3 scripts/initialize.py` once to generate the permanent device
+   identity. Commit this field and preserve it across updates, key rotation and
+   recovery; changing it breaks encrypted state discovery. For an existing
+   installation, retain its current machine ID instead of generating a new one.
 2. Use your established key-management process to create or select a boot/verity
    key and certificate, and a **separate** deployment-evidence key/certificate.
    Keep the private keys outside Git. Commit only the public certificates at
