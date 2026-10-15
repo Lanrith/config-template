@@ -19,7 +19,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: Lanrith/lanrith
-          ref: b37e148d44d1fc0a35d1dc9d36b116882e7a58f5 # Lanrith compiler
+          ref: 238fc9a46f6d073c3a9853a3b3e96e7aac924956 # Lanrith compiler
           persist-credentials: false
           path: tools
       - name: Install the YAML parser
