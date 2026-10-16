@@ -4,20 +4,43 @@ on:
     - cron: '17 4 * * *'
   workflow_dispatch:
 permissions:
-  contents: write
-  pull-requests: write
-  actions: write
+  contents: read
 concurrency:
   group: platform-update-proposal
   cancel-in-progress: false
 jobs:
   propose:
-    if: github.repository != 'Lanrith/config-template'
+    if: github.repository != 'Lanrith/config-template' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    environment: lanrith-updates
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
+      - name: Require one scoped update authority
+        env:
+          APP_ID: ${{ vars.LANRITH_UPDATE_APP_ID }}
+          APP_KEY: ${{ secrets.LANRITH_UPDATE_APP_PRIVATE_KEY }}
+          UPDATE_TOKEN: ${{ secrets.LANRITH_UPDATE_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import os
+          app=bool(os.environ['APP_ID']) and bool(os.environ['APP_KEY'])
+          token=bool(os.environ['UPDATE_TOKEN'])
+          assert bool(os.environ['APP_ID'])==bool(os.environ['APP_KEY']), 'Provide both GitHub App inputs'
+          assert app != token, 'Configure exactly one scoped GitHub App or update token in lanrith-updates'
+          PY
+      - id: app-token
+        if: vars.LANRITH_UPDATE_APP_ID != ''
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ vars.LANRITH_UPDATE_APP_ID }}
+          private-key: ${{ secrets.LANRITH_UPDATE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-workflows: write
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -26,6 +49,7 @@ jobs:
       - id: proposal
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
+          token: ${{ steps.app-token.outputs.token || secrets.LANRITH_UPDATE_TOKEN }}
           branch: automation/lanrith-platform
           title: Review Lanrith platform and workflow update
           commit-message: Propose verified Lanrith platform and workflow pins
@@ -35,7 +59,3 @@ jobs:
           add-paths: |
             platform.lock
             .github/workflows/build.yml
-            .github/workflows/check.yml
-      - name: Explicitly check the bot-created proposal
-        if: steps.proposal.outputs.pull-request-number
-        run: gh workflow run check.yml --repo "$GITHUB_REPOSITORY" --ref automation/lanrith-platform

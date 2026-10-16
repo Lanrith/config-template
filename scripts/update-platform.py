@@ -17,7 +17,10 @@ def run(*argv):
 
 
 def main():
-    all_releases = json.loads(run('gh', 'api', 'repos/'+REPOSITORY+'/releases?per_page=100'))
+    pages = json.loads(run('gh', 'api', '--paginate', '--slurp', 'repos/'+REPOSITORY+'/releases?per_page=100'))
+    if not isinstance(pages, list) or not all(isinstance(page, list) for page in pages):
+        raise ValueError('Published release enumeration is malformed.')
+    all_releases = [item for page in pages for item in page]
     candidates = all_releases
     candidates = [r for r in candidates if not r['draft'] and not r['prerelease'] and
                   re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+', r['tag_name'])]
@@ -69,8 +72,6 @@ def main():
             text = path.read_text()
             text = re.sub(r'(Lanrith/lanrith/\.github/workflows/consumer\.yml@)[0-9a-f]{40}',
                           r'\g<1>'+value['signer_commit'], text)
-            text = re.sub(r'(ref: )[0-9a-f]{40}( # Lanrith compiler)',
-                          r'\g<1>'+value['source_commit']+r'\g<2>', text)
             path.write_text(text)
     print('Qualified platform and workflow pins proposed. Review the diff before merging.')
 
