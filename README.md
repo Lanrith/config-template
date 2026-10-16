@@ -24,7 +24,9 @@ prerelease do not establish production readiness.
    `trust/boot.crt` and `trust/evidence.crt`.
 3. Run `python3 scripts/update-platform.py` to select a qualified platform and pin
    its artifacts and reusable workflow. Review and commit the resulting lock
-   and workflow diff. Setup fails clearly if no qualified release exists.
+   and workflow diff. Push this reviewed bootstrap commit to `main` before
+   enabling the protections below. Signing credentials are imported only after
+   protection is verified. Setup fails clearly if no qualified release exists.
 4. As a repository administrator, run `python3 scripts/setup.py OWNER/REPO
    --configure-protections`. This installs a main-branch ruleset requiring review
    and configuration checks, and three environments restricted to protected
@@ -48,6 +50,11 @@ prerelease do not establish production readiness.
 7. Push reviewed configuration through a pull request. Merging to protected main
    builds and publishes a private deployment release. Deployment and reboot are
    separate operator actions.
+
+Main requires an independent approving reviewer. A sole maintainer can review
+update pull requests authored by the configured GitHub App. For changes you
+author yourself, use a trusted reviewer or the local build path; GitHub does
+not permit self-approval under this policy.
 
 Boot secrets are `LANRITH_BOOT_KEY` and `LANRITH_BOOT_CERTIFICATE` in
 `lanrith-signing`. Evidence secrets are `LANRITH_EVIDENCE_KEY` and
