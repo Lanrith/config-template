@@ -39,7 +39,7 @@ def main():
             run('gh', 'attestation', 'verify', str(work/name), '--bundle', str(work/(name+'.intoto.jsonl')),
                 '--repo', REPOSITORY, '--signer-workflow', REPOSITORY+'/.github/workflows/build-base.yml',
                 '--signer-digest', value['signer_commit'], '--source-digest', value['source_commit'],
-                '--cert-oidc-issuer', 'https://token.actions.githubusercontent.com', '--deny-self-hosted-runners')
+                '--cert-oidc-issuer', 'https://token.actions.githubusercontent.com', '--source-ref', 'refs/heads/main', '--deny-self-hosted-runners')
         security = json.loads((work/'security.json').read_text())
         if hashlib.sha256((work/'security.json').read_bytes()).hexdigest() != value['files']['security.json'] or \
                 security.get('production_qualified') is not True or security.get('slsa_build_level') != 3 or \
@@ -59,7 +59,7 @@ def main():
             run('gh','attestation','verify',str(work/'security-assessment.json'),'--bundle',
                 str(work/'security-assessment.json.intoto.jsonl'),'--repo',REPOSITORY,'--signer-workflow',
                 REPOSITORY+'/.github/workflows/security-audit.yml','--signer-digest',head,'--source-digest',head,
-                '--cert-oidc-issuer','https://token.actions.githubusercontent.com','--deny-self-hosted-runners')
+                '--cert-oidc-issuer','https://token.actions.githubusercontent.com','--source-ref', 'refs/heads/main', '--deny-self-hosted-runners')
             if assessment.get('result') != 'pass' or assessment.get('inventory_sha256') != value['files']['inventory.json'] or \
                     set(value['files'].values()) & set(assessment.get('revoked_sha256', [])):
                 raise ValueError('Latest retained assessment rejects the selected platform.')
