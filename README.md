@@ -1,15 +1,17 @@
 # Lanrith configuration template
 
 Use this template to create a **private** repository for your router's hardware
-and network intent. GitHub can then propose platform updates, validate reviewed
+and network intent. GitHub can propose platform updates, validate reviewed
 changes, assemble an owner-signed image and publish a private deployment release.
 Your network configuration and deployment provenance stay in your repository.
 
-The OS is currently in qualification. Setup intentionally refuses a platform
-without the required native and supply-chain evidence. A template and a signed
-prerelease do not establish production readiness.
+Platform selection requires a published release with passing native and
+supply-chain evidence. Missing, stale or revoked evidence blocks assembly.
+A template and a signed prerelease do not establish production readiness.
 
 ## Setup
+
+Local commands require Python 3 with PyYAML, GitHub CLI and OpenSSL.
 
 1. Create a private repository from this template with `main` as its default
    branch. Replace the synthetic selectors, addresses and administrator key in
@@ -25,46 +27,83 @@ prerelease do not establish production readiness.
 3. Run `python3 scripts/update-platform.py` to select a qualified platform and pin
    its artifacts and reusable workflow. Review and commit the resulting lock
    and workflow diff. Push this reviewed bootstrap commit to `main` before
-   enabling the protections below. Signing credentials are imported only after
-   protection is verified. Setup fails clearly if no qualified release exists.
-4. As a repository administrator, run `python3 scripts/setup.py OWNER/REPO
-   --configure-protections`. This installs a main-branch ruleset requiring review
+   selecting a signing profile below. Setup fails clearly if no qualified
+   release exists.
+   This template also refuses an older qualified workflow that lacks its
+   signing-profile interface, before changing the existing lock.
+4. Select a signing profile as a repository administrator. The default
+   `protected` profile uses `python3 scripts/setup.py OWNER/REPO
+   --configure-protections`. It installs a main-branch ruleset requiring review
    and configuration checks, and three environments restricted to protected
-   branches. It checks the account's actual capabilities. Private repository
-   environment features depend on the GitHub plan; unsupported accounts use the
-   [local build path](https://github.com/Lanrith/lanrith/blob/main/docs/build-and-trust.md).
+   branches. For a private repository on GitHub Free, use `python3
+   scripts/setup.py OWNER/REPO --signing-profile repository`. This uses ordinary
+   repository Actions secrets and trusts every repository writer. Both commands
+   set the non-secret repository variable `LANRITH_SIGNING_PROFILE`; the default
+   remains `protected` if it is unset. See [signing profiles](#signing-profiles).
 5. Import the existing private material using `scripts/setup.py OWNER/REPO
    --import-keys --boot-key /private/boot.key --evidence-key /private/evidence.key`.
-   The command checks key/certificate matches, reads from protected local files,
-   and writes GitHub environment secrets through standard input. It does not
-   generate keys. Store recovery copies offline.
-6. Configure the update authority in `lanrith-updates`. Prefer a GitHub App
+   Add `--signing-profile repository` for the repository-secret profile. The
+   command checks key/certificate matches and separate authorities, reads from
+   protected local files, and writes secrets through standard input into the
+   selected scope. It does not generate keys. Store recovery copies offline.
+6. Configure the update authority in `lanrith-updates` for the protected profile,
+   or as repository secrets for the repository profile. Prefer a GitHub App
    installed only on this configuration repository, with Contents, Pull requests
    and Workflows read/write permissions. Give it no branch-protection bypass.
    Import its existing private key with `scripts/setup.py OWNER/REPO
    --import-update-credentials --update-app-id APP_ID --update-app-key
    /private/update-app.key`. A repository-scoped fine-grained token with the same
    permissions is an alternative: use `--update-token /private/update.token`.
+   Add `--signing-profile repository` when importing repository credentials.
    Select one authority and retain its normal rotation process. The default
    `GITHUB_TOKEN` cannot update the pinned workflow files.
-7. Push reviewed configuration through a pull request. Merging to protected main
-   builds and publishes a private deployment release. Deployment and reboot are
+7. Push reviewed configuration through a pull request. Merging to main builds
+   and publishes a private deployment release. Deployment and reboot are
    separate operator actions.
 
-Main requires an independent approving reviewer. A sole maintainer can review
-update pull requests authored by the configured GitHub App. For changes you
-author yourself, use a trusted reviewer or the local build path; GitHub does
-not permit self-approval under this policy.
+The protected profile requires an independent approving reviewer. A sole
+maintainer can review update pull requests authored by the configured GitHub
+App. For changes you author yourself, use a trusted reviewer or the local build
+path; GitHub does not permit self-approval under this policy. Repository-secret
+users must manage their own review process and restrict write access to
+trusted people.
+
+## Signing profiles
+
+| Profile | Key storage | Repository writer access | GitHub plan |
+| --- | --- | --- | --- |
+| `protected` (default) | Separate signing, evidence and update environments | Main reviews and checks are enforced; signing environments allow protected branches only | A plan supporting private rulesets and environments |
+| `repository` | Repository Actions secrets; separate boot and evidence keys | Every writer is trusted with signing authority because a writer can change workflows to request secrets | Works with private repositories on Free |
+
+GitHub documents [repository secrets](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets)
+and [private environment availability](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments).
+There is no automatic fallback between profiles. Setup refuses an existing
+profile mismatch before importing keys. To change profiles, review who can
+write workflows, remove the old secrets and variable, then rerun setup for the
+new scope.
+
+Both profiles admit the public platform before accessing keys, allow signing
+only on a main-branch push or manual run, assemble offline and sign evidence
+on a separate runner. Pull requests have no signing path. Repository scope
+cannot stop a repository writer from creating a different workflow that reads
+the same secrets; use the protected or
+[local build path](https://github.com/Lanrith/lanrith/blob/main/docs/build-and-trust.md)
+when that trust model does not fit.
 
 Boot secrets are `LANRITH_BOOT_KEY` and `LANRITH_BOOT_CERTIFICATE` in
 `lanrith-signing`. Evidence secrets are `LANRITH_EVIDENCE_KEY` and
-`LANRITH_EVIDENCE_CERTIFICATE` in `lanrith-evidence`. Optional serial login also
-needs `LANRITH_SERIAL_PASSPHRASE_HASH` in the boot environment; supply the scrypt
+`LANRITH_EVIDENCE_CERTIFICATE` in `lanrith-evidence`. In repository mode, those
+four names are repository secrets instead. A certificate is public; its
+corresponding private key is the credential. Optional serial login also needs
+`LANRITH_SERIAL_PASSPHRASE_HASH` in the selected boot scope; supply the scrypt
 hash using your private provisioning process, never in Git or a command argument.
-Update authority is separate: `LANRITH_UPDATE_APP_ID` is an environment variable
-and `LANRITH_UPDATE_APP_PRIVATE_KEY` is an environment secret, or use the
-`LANRITH_UPDATE_TOKEN` environment secret. The update job requests only the three
-repository permissions above and has no boot or evidence environment access.
+
+Update authority is separate: `LANRITH_UPDATE_APP_ID` is an Actions variable
+and `LANRITH_UPDATE_APP_PRIVATE_KEY` is a secret, or use the
+`LANRITH_UPDATE_TOKEN` secret. Use the selected profile's repository or
+`lanrith-updates` scope. The update job receives only its update credential and
+requests only the three repository permissions above. Repository writers can
+change that job too; environment isolation is provided by the protected profile.
 
 An owner deployment sequence is `release.sequence_floor + GITHUB_RUN_NUMBER`.
 If you recreate the workflow/repository or restore an older checkout, raise the
@@ -90,9 +129,12 @@ platform selection first, then propose the new fields against that compiler.
 The reusable workflow verifies the platform, compiler and matching builder
 before extracting or executing them. It assembles offline with boot keys in
 private tmpfs, then signs private DSSE SLSA evidence on a fresh job with a
-separate authority. It does not publish your repository identity to a public
-transparency log. Require deliberate review before enabling public keyless
-owner provenance or making this repository public.
+separate authority. Private provenance records the signing profile and whether
+environment protection was required. It does not certify an owner image's
+SLSA level; the public platform's assessed SLSA Build L3 evidence remains
+independently verified in both profiles. No public transparency log is used
+for owner provenance. Review that privacy boundary before enabling public
+keyless owner provenance or making this repository public.
 
 ## Integrations
 

@@ -18,6 +18,13 @@ jobs:
     permissions:
       contents: write
       actions: read
-    uses: Lanrith/lanrith/.github/workflows/consumer.yml@a4f3a18efa8d24e625c049a1762182e0d7ea40bd
+    uses: Lanrith/lanrith/.github/workflows/consumer.yml@53aa8e8fdc504c698a4d91f4b77db1a21979203f
     with:
       publish: true
+      signing-profile: ${{ vars.LANRITH_SIGNING_PROFILE || 'protected' }}
+    secrets:
+      LANRITH_BOOT_KEY: ${{ secrets.LANRITH_BOOT_KEY }}
+      LANRITH_BOOT_CERTIFICATE: ${{ secrets.LANRITH_BOOT_CERTIFICATE }}
+      LANRITH_SERIAL_PASSPHRASE_HASH: ${{ secrets.LANRITH_SERIAL_PASSPHRASE_HASH }}
+      LANRITH_EVIDENCE_KEY: ${{ secrets.LANRITH_EVIDENCE_KEY }}
+      LANRITH_EVIDENCE_CERTIFICATE: ${{ secrets.LANRITH_EVIDENCE_CERTIFICATE }}
