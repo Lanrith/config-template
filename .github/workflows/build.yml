@@ -13,7 +13,10 @@ on:
 permissions:
   contents: read
 jobs:
+  configuration:
+    uses: ./.github/workflows/check.yml
   image:
+    needs: configuration
     if: github.repository != 'Lanrith/config-template' && github.ref == 'refs/heads/main'
     permissions:
       contents: write

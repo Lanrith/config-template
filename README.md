@@ -84,7 +84,9 @@ new scope.
 
 Both profiles admit the public platform before accessing keys, allow signing
 only on a main-branch push or manual run, assemble offline and sign evidence
-on a separate runner. Pull requests have no signing path. Repository scope
+on a separate runner. The build workflow requires its own successful
+configuration check before calling the signing workflow, including on accounts
+without branch protection. Pull requests have no signing path. Repository scope
 cannot stop a repository writer from creating a different workflow that reads
 the same secrets; use the protected or
 [local build path](https://github.com/Lanrith/lanrith/blob/main/docs/build-and-trust.md)
