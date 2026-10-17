@@ -16,10 +16,28 @@ jobs:
         with:
           persist-credentials: false
           path: owner
+      - name: Read the reviewed compiler selection
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          persist-credentials: false
+          path: reviewed
+      - id: compiler
+        name: Select the compiler from reviewed configuration
+        env:
+          BOOTSTRAP_COMPILER: a4f3a18efa8d24e625c049a1762182e0d7ea40bd
+        run: |
+          python3 - <<'PY'
+          import json,os,pathlib,re
+          lock=pathlib.Path('reviewed/platform.lock')
+          commit=json.loads(lock.read_text())['source_commit'] if lock.exists() else os.environ['BOOTSTRAP_COMPILER']
+          assert re.fullmatch(r'[0-9a-f]{40}',commit), 'Reviewed compiler identity is invalid'
+          with open(os.environ['GITHUB_OUTPUT'],'a') as stream: stream.write('sha='+commit+'\n')
+          PY
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: Lanrith/lanrith
-          ref: a4f3a18efa8d24e625c049a1762182e0d7ea40bd # Lanrith compiler
+          ref: ${{ steps.compiler.outputs.sha }}
           persist-credentials: false
           path: tools
       - name: Install the YAML parser
@@ -29,6 +47,9 @@ jobs:
       - name: Validate configuration without signing material
         working-directory: tools
         run: python3 -m lanrith validate ../owner/config.yaml
+      - name: Check protected local credential inputs
+        working-directory: owner
+        run: python3 -B -m unittest discover -s tests -v
       - name: Check the owner lock and integration inventory
         if: github.repository != 'Lanrith/config-template'
         run: python3 owner/scripts/check.py --owner owner --tools tools

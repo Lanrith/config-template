@@ -14,7 +14,7 @@ permissions:
   contents: read
 jobs:
   image:
-    if: github.repository != 'Lanrith/config-template'
+    if: github.repository != 'Lanrith/config-template' && github.ref == 'refs/heads/main'
     permissions:
       contents: write
       actions: read

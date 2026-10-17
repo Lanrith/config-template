@@ -24,10 +24,12 @@ prerelease do not establish production readiness.
    `trust/boot.crt` and `trust/evidence.crt`.
 3. Run `python3 scripts/update-platform.py` to select a qualified platform and pin
    its artifacts and reusable workflow. Review and commit the resulting lock
-   and workflow diff. Setup fails clearly if no qualified release exists.
+   and workflow diff. Push this reviewed bootstrap commit to `main` before
+   enabling the protections below. Signing credentials are imported only after
+   protection is verified. Setup fails clearly if no qualified release exists.
 4. As a repository administrator, run `python3 scripts/setup.py OWNER/REPO
    --configure-protections`. This installs a main-branch ruleset requiring review
-   and configuration checks, and two environments restricted to protected
+   and configuration checks, and three environments restricted to protected
    branches. It checks the account's actual capabilities. Private repository
    environment features depend on the GitHub plan; unsupported accounts use the
    [local build path](https://github.com/Lanrith/lanrith/blob/main/docs/build-and-trust.md).
@@ -36,15 +38,33 @@ prerelease do not establish production readiness.
    The command checks key/certificate matches, reads from protected local files,
    and writes GitHub environment secrets through standard input. It does not
    generate keys. Store recovery copies offline.
-6. Push reviewed configuration through a pull request. Merging to protected main
+6. Configure the update authority in `lanrith-updates`. Prefer a GitHub App
+   installed only on this configuration repository, with Contents, Pull requests
+   and Workflows read/write permissions. Give it no branch-protection bypass.
+   Import its existing private key with `scripts/setup.py OWNER/REPO
+   --import-update-credentials --update-app-id APP_ID --update-app-key
+   /private/update-app.key`. A repository-scoped fine-grained token with the same
+   permissions is an alternative: use `--update-token /private/update.token`.
+   Select one authority and retain its normal rotation process. The default
+   `GITHUB_TOKEN` cannot update the pinned workflow files.
+7. Push reviewed configuration through a pull request. Merging to protected main
    builds and publishes a private deployment release. Deployment and reboot are
    separate operator actions.
+
+Main requires an independent approving reviewer. A sole maintainer can review
+update pull requests authored by the configured GitHub App. For changes you
+author yourself, use a trusted reviewer or the local build path; GitHub does
+not permit self-approval under this policy.
 
 Boot secrets are `LANRITH_BOOT_KEY` and `LANRITH_BOOT_CERTIFICATE` in
 `lanrith-signing`. Evidence secrets are `LANRITH_EVIDENCE_KEY` and
 `LANRITH_EVIDENCE_CERTIFICATE` in `lanrith-evidence`. Optional serial login also
 needs `LANRITH_SERIAL_PASSPHRASE_HASH` in the boot environment; supply the scrypt
 hash using your private provisioning process, never in Git or a command argument.
+Update authority is separate: `LANRITH_UPDATE_APP_ID` is an environment variable
+and `LANRITH_UPDATE_APP_PRIVATE_KEY` is an environment secret, or use the
+`LANRITH_UPDATE_TOKEN` environment secret. The update job requests only the three
+repository permissions above and has no boot or evidence environment access.
 
 An owner deployment sequence is `release.sequence_floor + GITHUB_RUN_NUMBER`.
 If you recreate the workflow/repository or restore an older checkout, raise the
@@ -58,6 +78,14 @@ reusable workflow commit. It verifies published provenance but does not merge
 or approve its own PR. Review source/workflow pins and security changes. Merged
 changes trigger the full private build. A fresh inventory-bound security
 assessment is required even if the platform version has not changed.
+The scoped App/token makes the proposal's normal PR checks run automatically.
+See the [PR action's token requirements](https://github.com/peter-evans/create-pull-request#token)
+when configuring or rotating this authority.
+
+PR validation uses the compiler selected by the reviewed base branch. A
+proposed platform compiler and build workflow run only after that update is
+reviewed and merged to main. If an update adds configuration fields, merge its
+platform selection first, then propose the new fields against that compiler.
 
 The reusable workflow verifies the platform, compiler and matching builder
 before extracting or executing them. It assembles offline with boot keys in
