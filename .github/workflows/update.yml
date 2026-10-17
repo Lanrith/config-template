@@ -13,10 +13,14 @@ jobs:
     if: github.repository != 'Lanrith/config-template' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    environment: lanrith-updates
+    environment: ${{ vars.LANRITH_SIGNING_PROFILE != 'repository' && 'lanrith-updates' || '' }}
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
+      - name: Install the workflow parser
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install --yes python3-yaml
       - name: Require one scoped update authority
         env:
           APP_ID: ${{ vars.LANRITH_UPDATE_APP_ID }}
@@ -28,7 +32,7 @@ jobs:
           app=bool(os.environ['APP_ID']) and bool(os.environ['APP_KEY'])
           token=bool(os.environ['UPDATE_TOKEN'])
           assert bool(os.environ['APP_ID'])==bool(os.environ['APP_KEY']), 'Provide both GitHub App inputs'
-          assert app != token, 'Configure exactly one scoped GitHub App or update token in lanrith-updates'
+          assert app != token, 'Configure exactly one scoped GitHub App or update token for the selected signing profile'
           PY
       - id: app-token
         if: vars.LANRITH_UPDATE_APP_ID != ''

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Configure private-repository protections and import independently managed keys."""
+"""Select private signing controls and import independently managed keys."""
 
 import argparse
 import json
@@ -54,9 +54,14 @@ def key_matches(key, certificate):
     return data
 
 
+def credential_scope(repository, profile, environment):
+    return ['--repo', repository]+(['--env', environment] if profile == 'protected' else [])
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('repository')
+    parser.add_argument('--signing-profile', choices=('protected', 'repository'), default='protected')
     parser.add_argument('--configure-protections', action='store_true')
     parser.add_argument('--import-keys', action='store_true')
     parser.add_argument('--boot-key', type=Path)
@@ -70,6 +75,8 @@ def main():
     repository = api(args.repository, '')
     require(repository['private'] and repository['default_branch'] == 'main',
             'Use a private configuration repository with main as its default branch.')
+    require(not args.configure_protections or args.signing_profile == 'protected',
+            'Use --configure-protections with the protected signing profile.')
     if args.configure_protections:
         require(repository.get('permissions', {}).get('admin'), 'Repository administration is required for setup.')
         rules = api(args.repository, '/rulesets?per_page=100')
@@ -86,29 +93,47 @@ def main():
         for name in ('lanrith-signing', 'lanrith-evidence', 'lanrith-updates'):
             api(args.repository, '/environments/'+name,
                 {'deployment_branch_policy': {'protected_branches': True, 'custom_branch_policies': False}})
-    rules = api(args.repository, '/rules/branches/main?per_page=100')
-    require(any(r['type'] == 'pull_request' and r.get('parameters', {}).get('required_approving_review_count', 0) >= 1
-                for r in rules) and any(r['type'] == 'required_status_checks' for r in rules),
-            'Protected main requires reviews and configuration checks.')
-    for name in ('lanrith-signing', 'lanrith-evidence', 'lanrith-updates'):
-        environment = api(args.repository, '/environments/'+name)
-        require(environment.get('deployment_branch_policy', {}).get('protected_branches') is True,
-                'Signing and update environments must restrict deployments to protected branches.')
+    if args.signing_profile == 'protected':
+        rules = api(args.repository, '/rules/branches/main?per_page=100')
+        require(any(r['type'] == 'pull_request' and r.get('parameters', {}).get('required_approving_review_count', 0) >= 1 and
+                    r.get('parameters', {}).get('dismiss_stale_reviews_on_push') is True for r in rules) and
+                any(r['type'] == 'required_status_checks' and
+                    r.get('parameters', {}).get('required_status_checks') for r in rules),
+                'Protected main requires reviews and configuration checks.')
+        for name in ('lanrith-signing', 'lanrith-evidence', 'lanrith-updates'):
+            environment = api(args.repository, '/environments/'+name)
+            policy = environment.get('deployment_branch_policy') or {}
+            require(policy.get('protected_branches') is True and not policy.get('custom_branch_policies'),
+                    'Signing and update environments must restrict deployments to protected branches.')
+    else:
+        api(args.repository, '/actions/secrets')
+    variables = api(args.repository, '/actions/variables?per_page=100')
+    selected = [item['value'] for item in variables['variables'] if item['name'] == 'LANRITH_SIGNING_PROFILE']
+    require(not selected or selected == [args.signing_profile],
+            'The repository already selects a different signing profile. Review its credentials before changing modes.')
+    if not selected:
+        require(repository.get('permissions', {}).get('admin'), 'Repository administration is required to select signing controls.')
+        gh('variable', 'set', 'LANRITH_SIGNING_PROFILE', '--repo', args.repository, '--body', args.signing_profile)
     if args.import_keys:
         require(args.boot_key is not None and args.evidence_key is not None, 'Provide both existing key paths.')
         boot_key = key_matches(args.boot_key, ROOT/'trust/boot.crt')
         evidence_key = key_matches(args.evidence_key, ROOT/'trust/evidence.crt')
-        require((ROOT/'trust/boot.crt').read_bytes() != (ROOT/'trust/evidence.crt').read_bytes(),
+        certificates = [subprocess.run(['openssl', 'x509', '-in', str(ROOT/'trust'/name), '-pubkey', '-noout'],
+                                      check=True, capture_output=True, timeout=15).stdout
+                        for name in ('boot.crt', 'evidence.crt')]
+        require(certificates[0] != certificates[1],
                 'Boot and evidence authorities must be separate.')
         for environment, values in (
             ('lanrith-signing', {'LANRITH_BOOT_KEY': boot_key, 'LANRITH_BOOT_CERTIFICATE': (ROOT/'trust/boot.crt').read_bytes()}),
             ('lanrith-evidence', {'LANRITH_EVIDENCE_KEY': evidence_key, 'LANRITH_EVIDENCE_CERTIFICATE': (ROOT/'trust/evidence.crt').read_bytes()})):
             for name, data in values.items():
-                gh('secret', 'set', name, '--repo', args.repository, '--env', environment, data=data)
+                gh('secret', 'set', name, *credential_scope(args.repository, args.signing_profile, environment), data=data)
     if args.import_update_credentials:
         app = args.update_app_id is not None or args.update_app_key is not None
         require(app != (args.update_token is not None), 'Choose exactly one GitHub App or repository-scoped update token.')
-        configured = api(args.repository, '/environments/lanrith-updates/secrets')
+        prefix = '/environments/lanrith-updates' if args.signing_profile == 'protected' else '/actions'
+        scope = credential_scope(args.repository, args.signing_profile, 'lanrith-updates')
+        configured = api(args.repository, prefix+'/secrets')
         names = {item['name'] for item in configured['secrets']}
         if app:
             require(args.update_app_id is not None and re.fullmatch(r'[1-9][0-9]*', args.update_app_id) and
@@ -117,20 +142,17 @@ def main():
             data = private_material(args.update_app_key)
             subprocess.run(['openssl', 'rsa', '-check', '-noout'], input=data,
                            check=True, capture_output=True, timeout=15)
-            gh('variable', 'set', 'LANRITH_UPDATE_APP_ID', '--repo', args.repository, '--env',
-               'lanrith-updates', '--body', args.update_app_id)
-            gh('secret', 'set', 'LANRITH_UPDATE_APP_PRIVATE_KEY', '--repo', args.repository,
-               '--env', 'lanrith-updates', data=data)
+            gh('variable', 'set', 'LANRITH_UPDATE_APP_ID', *scope, '--body', args.update_app_id)
+            gh('secret', 'set', 'LANRITH_UPDATE_APP_PRIVATE_KEY', *scope, data=data)
         else:
-            variables = api(args.repository, '/environments/lanrith-updates/variables')
+            variables = api(args.repository, prefix+'/variables')
             require('LANRITH_UPDATE_APP_PRIVATE_KEY' not in names and
                     not any(item['name']=='LANRITH_UPDATE_APP_ID' for item in variables['variables']),
                     'Remove previous alternative App credentials before selecting an update token.')
             data = private_material(args.update_token).strip()
             require(data and all(33 <= byte <= 126 for byte in data), 'Update token has an invalid encoding.')
-            gh('secret', 'set', 'LANRITH_UPDATE_TOKEN', '--repo', args.repository,
-               '--env', 'lanrith-updates', data=data)
-    print('Private repository protections and selected credential imports verified. No image was built or deployed.')
+            gh('secret', 'set', 'LANRITH_UPDATE_TOKEN', *scope, data=data)
+    print('Private signing profile '+args.signing_profile+' and selected credential imports verified. No image was built or deployed.')
 
 
 if __name__ == '__main__':
