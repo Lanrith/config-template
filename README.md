@@ -9,6 +9,12 @@ Platform selection requires a published release with passing native and
 supply-chain evidence. Missing, stale or revoked evidence blocks assembly.
 A template and a signed prerelease do not establish production readiness.
 
+`access.rules` is an ordered list of generic allow/deny rules. An optional
+`name` makes each rule easier to read and is retained in resolved configuration;
+renaming a rule does not change its permissions. The examples grant Internet
+access explicitly and select IPv4 masquerading separately with
+`uplink.masquerade`.
+
 ## Setup
 
 Local commands require Python 3 with PyYAML, GitHub CLI and OpenSSL.
