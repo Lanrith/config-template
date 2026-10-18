@@ -46,8 +46,9 @@ Local commands require Python 3 with PyYAML, GitHub CLI and OpenSSL.
    command checks key/certificate matches and separate authorities, reads from
    protected local files, and writes secrets through standard input into the
    selected scope. It does not generate keys. Store recovery copies offline.
-6. Configure the update authority in `lanrith-updates` for the protected profile,
-   or as repository secrets for the repository profile. Prefer a GitHub App
+6. For automatic update PRs, configure the update authority in `lanrith-updates`
+   for the protected profile, or as repository secrets for the repository profile.
+   Prefer a GitHub App
    installed only on this configuration repository, with Contents, Pull requests
    and Workflows read/write permissions. Give it no branch-protection bypass.
    Import its existing private key with `scripts/setup.py OWNER/REPO
@@ -57,6 +58,11 @@ Local commands require Python 3 with PyYAML, GitHub CLI and OpenSSL.
    Add `--signing-profile repository` when importing repository credentials.
    Select one authority and retain its normal rotation process. The default
    `GITHUB_TOKEN` cannot update the pinned workflow files.
+   Manual updates need no stored update credential: run
+   `python3 scripts/update-platform.py` with your local GitHub CLI authentication,
+   review the diff and open a PR. Disable the **Propose platform updates**
+   workflow if you choose manual updates; an unconfigured scheduled run fails
+   before creating a proposal. Signing and merged-config builds still work.
 7. Push reviewed configuration through a pull request. Merging to main builds
    and publishes a private deployment release. Deployment and reboot are
    separate operator actions.

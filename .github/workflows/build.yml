@@ -21,7 +21,7 @@ jobs:
     permissions:
       contents: write
       actions: read
-    uses: Lanrith/lanrith/.github/workflows/consumer.yml@53aa8e8fdc504c698a4d91f4b77db1a21979203f
+    uses: Lanrith/lanrith/.github/workflows/consumer.yml@fc29e90b8d417de2598b6765940562da8269e1d1
     with:
       publish: true
       signing-profile: ${{ vars.LANRITH_SIGNING_PROFILE || 'protected' }}

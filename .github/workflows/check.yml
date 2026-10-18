@@ -26,7 +26,7 @@ jobs:
       - id: compiler
         name: Select the compiler from reviewed configuration
         env:
-          BOOTSTRAP_COMPILER: 53aa8e8fdc504c698a4d91f4b77db1a21979203f
+          BOOTSTRAP_COMPILER: fc29e90b8d417de2598b6765940562da8269e1d1
         run: |
           python3 - <<'PY'
           import json,os,pathlib,re
