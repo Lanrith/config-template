@@ -13,11 +13,21 @@ on:
 permissions:
   contents: read
 jobs:
+  configuration:
+    uses: ./.github/workflows/check.yml
   image:
+    needs: configuration
     if: github.repository != 'Lanrith/config-template' && github.ref == 'refs/heads/main'
     permissions:
       contents: write
       actions: read
-    uses: Lanrith/lanrith/.github/workflows/consumer.yml@a4f3a18efa8d24e625c049a1762182e0d7ea40bd
+    uses: Lanrith/lanrith/.github/workflows/consumer.yml@167d5e841f46a24110fdc60cc3bf39fe75918c22
     with:
       publish: true
+      signing-profile: ${{ vars.LANRITH_SIGNING_PROFILE || 'protected' }}
+    secrets:
+      LANRITH_BOOT_KEY: ${{ secrets.LANRITH_BOOT_KEY }}
+      LANRITH_BOOT_CERTIFICATE: ${{ secrets.LANRITH_BOOT_CERTIFICATE }}
+      LANRITH_SERIAL_PASSPHRASE_HASH: ${{ secrets.LANRITH_SERIAL_PASSPHRASE_HASH }}
+      LANRITH_EVIDENCE_KEY: ${{ secrets.LANRITH_EVIDENCE_KEY }}
+      LANRITH_EVIDENCE_CERTIFICATE: ${{ secrets.LANRITH_EVIDENCE_CERTIFICATE }}

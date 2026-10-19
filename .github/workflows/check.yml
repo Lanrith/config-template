@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  workflow_call:
 permissions:
   contents: read
 jobs:
@@ -25,7 +26,7 @@ jobs:
       - id: compiler
         name: Select the compiler from reviewed configuration
         env:
-          BOOTSTRAP_COMPILER: a4f3a18efa8d24e625c049a1762182e0d7ea40bd
+          BOOTSTRAP_COMPILER: 167d5e841f46a24110fdc60cc3bf39fe75918c22
         run: |
           python3 - <<'PY'
           import json,os,pathlib,re

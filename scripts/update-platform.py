@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """Propose an authenticated qualified platform and matching workflow pin."""
 
+import base64
+import datetime
 import hashlib
 import json
 from pathlib import Path
 import re
 import subprocess
 import tempfile
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY = 'Lanrith/lanrith'
@@ -14,6 +17,30 @@ REPOSITORY = 'Lanrith/lanrith'
 
 def run(*argv):
     return subprocess.run(argv, check=True, capture_output=True, text=True).stdout
+
+
+def fresh_assessment(report, selection, now=None):
+    if report.get('schema') != 1 or report.get('inventory_sha256') != selection['files']['inventory.json']:
+        raise ValueError('Security assessment describes another inventory.')
+    assessed = datetime.datetime.fromisoformat(report['assessed_at'])
+    now = now or datetime.datetime.now(datetime.timezone.utc)
+    if assessed.tzinfo is None or not datetime.timedelta(0) <= now-assessed <= datetime.timedelta(hours=24):
+        raise ValueError('Platform security assessment is stale or future-dated.')
+
+
+def check_workflow_support(selection):
+    response = json.loads(run('gh', 'api', 'repos/'+REPOSITORY+
+        '/contents/.github/workflows/consumer.yml?ref='+selection['signer_commit']))
+    if response.get('encoding') != 'base64' or not 0 < response.get('size', 0) <= 65536:
+        raise ValueError('Qualified consumer workflow is unavailable or oversized.')
+    source = base64.b64decode(''.join(response['content'].split()), validate=True)
+    if len(source) != response['size']:
+        raise ValueError('Qualified consumer workflow response is incomplete.')
+    workflow = yaml.safe_load(source)
+    events = workflow.get('on', workflow.get(True, {}))
+    profile = events.get('workflow_call', {}).get('inputs', {}).get('signing-profile')
+    if profile != {'type': 'string', 'default': 'protected'}:
+        raise ValueError('This template needs a qualified platform with private signing profiles. Keep the existing pin until one is published.')
 
 
 def main():
@@ -42,13 +69,15 @@ def main():
             run('gh', 'attestation', 'verify', str(work/name), '--bundle', str(work/(name+'.intoto.jsonl')),
                 '--repo', REPOSITORY, '--signer-workflow', REPOSITORY+'/.github/workflows/build-base.yml',
                 '--signer-digest', value['signer_commit'], '--source-digest', value['source_commit'],
-                '--cert-oidc-issuer', 'https://token.actions.githubusercontent.com', '--source-ref', 'refs/heads/main', '--deny-self-hosted-runners')
+                '--cert-oidc-issuer', 'https://token.actions.githubusercontent.com', '--source-ref', 'refs/heads/main', '--deny-self-hosted-runners',
+                '--predicate-type', 'https://slsa.dev/provenance/v1')
         security = json.loads((work/'security.json').read_text())
         if hashlib.sha256((work/'security.json').read_bytes()).hexdigest() != value['files']['security.json'] or \
                 security.get('production_qualified') is not True or security.get('slsa_build_level') != 3 or \
                 security.get('slsa_spec') != '1.2' or security.get('qualification', {}).get('result') != 'pass':
             raise ValueError('The selected release has incomplete production qualification.')
         # A workflow change is proposed for review, never executed by this updater.
+        fresh = security
         assessments = [r for r in all_releases if not r['draft'] and
                        re.fullmatch(r'assessment-[0-9]{8}T[0-9]{6}Z-'+value['files']['inventory.json'][:12], r['tag_name'])]
         if assessments:
@@ -62,11 +91,17 @@ def main():
             run('gh','attestation','verify',str(work/'security-assessment.json'),'--bundle',
                 str(work/'security-assessment.json.intoto.jsonl'),'--repo',REPOSITORY,'--signer-workflow',
                 REPOSITORY+'/.github/workflows/security-audit.yml','--signer-digest',head,'--source-digest',head,
-                '--cert-oidc-issuer','https://token.actions.githubusercontent.com','--source-ref', 'refs/heads/main', '--deny-self-hosted-runners')
-            if assessment.get('result') != 'pass' or assessment.get('inventory_sha256') != value['files']['inventory.json'] or \
+                '--cert-oidc-issuer','https://token.actions.githubusercontent.com','--source-ref', 'refs/heads/main', '--deny-self-hosted-runners',
+                '--predicate-type', 'https://slsa.dev/provenance/v1')
+            if assessment.get('result') != 'pass' or assessment.get('failures') != [] or \
+                    assessment.get('platform_version') != value['version'] or \
+                    assessment.get('inventory_sha256') != value['files']['inventory.json'] or \
                     set(value['files'].values()) & set(assessment.get('revoked_sha256', [])):
                 raise ValueError('Latest retained assessment rejects the selected platform.')
             value['security_workflow_commit'] = head
+            fresh = assessment
+        fresh_assessment(fresh, value)
+        check_workflow_support(value)
         (ROOT/'platform.lock').write_text(json.dumps(value, sort_keys=True, indent=2)+'\n')
         for path in (ROOT/'.github/workflows').glob('*.yml'):
             text = path.read_text()
