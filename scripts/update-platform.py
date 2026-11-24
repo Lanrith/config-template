@@ -28,9 +28,10 @@ def fresh_assessment(report, selection, now=None):
         raise ValueError('Platform security assessment is stale or future-dated.')
 
 
-def check_workflow_support(selection):
+def check_workflow_support(selection, *, qualification=False):
+    name = 'consumer-qualification.yml' if qualification else 'consumer.yml'
     response = json.loads(run('gh', 'api', 'repos/'+REPOSITORY+
-        '/contents/.github/workflows/consumer.yml?ref='+selection['signer_commit']))
+        '/contents/.github/workflows/'+name+'?ref='+selection['signer_commit']))
     if response.get('encoding') != 'base64' or not 0 < response.get('size', 0) <= 65536:
         raise ValueError('Qualified consumer workflow is unavailable or oversized.')
     source = base64.b64decode(''.join(response['content'].split()), validate=True)
@@ -38,6 +39,12 @@ def check_workflow_support(selection):
         raise ValueError('Qualified consumer workflow response is incomplete.')
     workflow = yaml.safe_load(source)
     events = workflow.get('on', workflow.get(True, {}))
+    if qualification:
+        image = workflow.get('jobs', {}).get('image', {})
+        if 'workflow_call' not in events or events['workflow_call'] not in (None, {}) or \
+                image.get('if') != "github.repository == 'Lanrith/config-template-qualification'":
+            raise ValueError('The selected platform lacks the isolated consumer qualification contract.')
+        return
     profile = events.get('workflow_call', {}).get('inputs', {}).get('signing-profile')
     if profile != {'type': 'string', 'default': 'protected'}:
         raise ValueError('This template needs a qualified platform with private signing profiles. Keep the existing pin until one is published.')
@@ -54,6 +61,8 @@ def main():
     if not candidates:
         raise ValueError('No production-qualified Lanrith release is available. Keep the existing accepted image.')
     chosen = max(candidates, key=lambda r: tuple(map(int, r['tag_name'][1:].split('.'))))
+    if chosen.get('immutable') is not True:
+        raise ValueError('The selected platform release is not immutable.')
     with tempfile.TemporaryDirectory(prefix='lanrith-platform-proposal.') as temporary:
         work = Path(temporary)
         run('gh', 'release', 'download', chosen['tag_name'], '--repo', REPOSITORY, '--dir', str(work),
@@ -82,6 +91,8 @@ def main():
                        re.fullmatch(r'assessment-[0-9]{8}T[0-9]{6}Z-'+value['files']['inventory.json'][:12], r['tag_name'])]
         if assessments:
             latest = max(assessments, key=lambda r: r['tag_name'])
+            if latest.get('immutable') is not True:
+                raise ValueError('The retained assessment is not immutable.')
             run('gh','release','download',latest['tag_name'],'--repo',REPOSITORY,'--dir',str(work),
                 '--pattern','security-assessment.json','--pattern','security-assessment.json.intoto.jsonl')
             assessment = json.loads((work/'security-assessment.json').read_text())
@@ -101,11 +112,17 @@ def main():
             value['security_workflow_commit'] = head
             fresh = assessment
         fresh_assessment(fresh, value)
-        check_workflow_support(value)
+        pins = [match for path in (ROOT/'.github/workflows').glob('*.yml')
+                for match in re.findall(
+                    r'Lanrith/lanrith/\.github/workflows/(consumer(?:-qualification)?\.yml)@([0-9a-f]{40})',
+                    path.read_text())]
+        if len(pins) != 1:
+            raise ValueError('Expected exactly one pinned owner or canary build workflow.')
+        check_workflow_support(value, qualification=pins[0][0] == 'consumer-qualification.yml')
         (ROOT/'platform.lock').write_text(json.dumps(value, sort_keys=True, indent=2)+'\n')
         for path in (ROOT/'.github/workflows').glob('*.yml'):
             text = path.read_text()
-            text = re.sub(r'(Lanrith/lanrith/\.github/workflows/consumer\.yml@)[0-9a-f]{40}',
+            text = re.sub(r'(Lanrith/lanrith/\.github/workflows/consumer(?:-qualification)?\.yml@)[0-9a-f]{40}',
                           r'\g<1>'+value['signer_commit'], text)
             path.write_text(text)
     print('Qualified platform and workflow pins proposed. Review the diff before merging.')

@@ -14,6 +14,27 @@ spec.loader.exec_module(update)
 
 
 class PlatformUpdateTests(unittest.TestCase):
+    def test_mutable_platform_is_rejected_before_downloading_assets(self):
+        releases = [[{'draft': False, 'prerelease': False, 'tag_name': 'v1.2.3', 'immutable': False}]]
+        with patch.object(update, 'run', return_value=json.dumps(releases)) as run:
+            with self.assertRaisesRegex(ValueError, 'not immutable'):
+                update.main()
+        self.assertEqual(run.call_count, 1)
+
+    def test_canary_requires_exact_qualified_workflow_and_repository_boundary(self):
+        source = b"on:\n  workflow_call:\njobs:\n  image:\n    if: github.repository == 'Lanrith/config-template-qualification'\n"
+        response = {'encoding': 'base64', 'size': len(source),
+                    'content': base64.b64encode(source).decode()}
+        with patch.object(update, 'run', return_value=json.dumps(response)) as run:
+            update.check_workflow_support({'signer_commit': 'a'*40}, qualification=True)
+        self.assertTrue(run.call_args.args[-1].endswith('consumer-qualification.yml?ref='+'a'*40))
+        for source in (b'on:\n  workflow_call:\n', b'on:\n  push:\n'):
+            response = {'encoding': 'base64', 'size': len(source),
+                        'content': base64.b64encode(source).decode()}
+            with patch.object(update, 'run', return_value=json.dumps(response)), \
+                    self.assertRaisesRegex(ValueError, 'qualification contract'):
+                update.check_workflow_support({'signer_commit': 'a'*40}, qualification=True)
+
     def test_freshness_is_inventory_bound_and_rejects_stale_future_or_naive_time(self):
         now = datetime.datetime(2026, 1, 2, tzinfo=datetime.timezone.utc)
         selection = {'files': {'inventory.json': 'a'*64}}

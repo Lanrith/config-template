@@ -34,7 +34,10 @@ if value['extensions']:
     for identity, digest in pins.items():
         release.require(extensions.admit(owner/'extensions'/identity, digest)['id'] == identity,
                         'Extension differs from its selected identity.')
+workflow_pins = []
 for path in (owner/'.github/workflows').glob('*.yml'):
-    for pin in re.findall(r'Lanrith/lanrith/\.github/workflows/consumer\.yml@([^\s]+)', path.read_text()):
+    for pin in re.findall(r'Lanrith/lanrith/\.github/workflows/consumer(?:-qualification)?\.yml@([^\s]+)', path.read_text()):
+        workflow_pins.append(pin)
         release.require(pin == selection['signer_commit'], 'Reusable workflow differs from the reviewed platform pin.')
+release.require(len(workflow_pins) == 1, 'Expected exactly one pinned owner or canary build workflow.')
 print('Owner configuration, trust, integration inventory and workflow pins verified.')

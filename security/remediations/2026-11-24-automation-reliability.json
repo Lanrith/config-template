@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "date": "2026-11-24",
+  "reason": "Downstream update qualification has been dormant and its updater did not explicitly reject mutable release evidence.",
+  "changes": [
+    "Require immutable platform and retained-assessment releases.",
+    "Require exactly one matching production or disposable-canary workflow pin.",
+    "Verify the exact selected workflow supports its required contract before proposing a pin.",
+    "Advance create-pull-request to the reviewed v8.1.3 commit."
+  ],
+  "validation": "11 unit tests, workflow lint, and diff checks pass; a real image build still requires the new qualified immutable platform.",
+  "related_controller_pr": "https://github.com/Lanrith/lanrith/pull/98",
+  "rollout": "After the shared controller is qualified and published, update the canary lock and build workflow together, configure its scoped updater App and run the isolated image qualification. No deployment keys are used.",
+  "approval": "Independent human review after successful current-head CI. This record grants no approval."
+}
